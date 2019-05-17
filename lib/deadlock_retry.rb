@@ -1,12 +1,9 @@
-require 'active_support/core_ext/module/attribute_accessors'
+require "active_support/core_ext/module/attribute_accessors"
 
 module DeadlockRetry
   def self.included(base)
-    base.extend(ClassMethods)
-    base.class_eval do
-      class << self
-        alias_method_chain :transaction, :deadlock_handling
-      end
+    class << base
+      prepend ClassMethods
     end
   end
 
@@ -16,19 +13,17 @@ module DeadlockRetry
     DEADLOCK_ERROR_MESSAGES = [
       "Deadlock found when trying to get lock",
       "Lock wait timeout exceeded",
-      "deadlock detected"
+      "deadlock detected",
     ]
 
     MAXIMUM_RETRIES_ON_DEADLOCK = 3
 
-
-    def transaction_with_deadlock_handling(*objects, &block)
+    def transaction(*objects, &block)
       retry_count = 0
 
       check_innodb_status_available
-
       begin
-        transaction_without_deadlock_handling(*objects, &block)
+        super(*objects, &block)
       rescue ActiveRecord::StatementInvalid => error
         raise if in_nested_transaction?
         if DEADLOCK_ERROR_MESSAGES.any? { |msg| error.message =~ /#{Regexp.escape(msg)}/ }
@@ -44,12 +39,12 @@ module DeadlockRetry
       end
     end
 
-    private
-
     WAIT_TIMES = [0, 1, 2, 4, 8, 16, 32]
 
+    private
+
     def exponential_pause(count)
-      sec = WAIT_TIMES[count-1] || 32
+      sec = WAIT_TIMES[count - 1] || 32
       # sleep 0, 1, 2, 4, ... seconds up to the MAXIMUM_RETRIES.
       # Cap the pause time at 32 seconds.
       sleep(sec) if sec != 0
@@ -61,7 +56,7 @@ module DeadlockRetry
     end
 
     def show_innodb_status
-       self.connection.select_value(DeadlockRetry.innodb_status_cmd)
+      self.connection.select_value(DeadlockRetry.innodb_status_cmd)
     end
 
     # Should we try to log innodb status -- if we don't have permission to,
@@ -72,11 +67,11 @@ module DeadlockRetry
       if self.connection.adapter_name == "MySQL"
         begin
           mysql_version = self.connection.select_rows('show variables like \'version\'')[0][1]
-          cmd = if mysql_version < '5.5'
-            'show innodb status'
-          else
-            'show engine innodb status'
-          end
+          cmd = if mysql_version < "5.5"
+                  "show innodb status"
+                else
+                  "show engine innodb status"
+                end
           self.connection.select_value(cmd)
           DeadlockRetry.innodb_status_cmd = cmd
         rescue
@@ -100,7 +95,6 @@ module DeadlockRetry
       # Access denied, ignore
       logger.info "Cannot log innodb status: #{e.message}"
     end
-
   end
 end
 

@@ -1,12 +1,10 @@
 require 'rake'
-require 'rake/testtask'
+begin
+  require 'rspec/core/rake_task'
 
-desc "Default task"
-task :default => [ :test ]
+  RSpec::Core::RakeTask.new(:spec)
 
-Rake::TestTask.new do |t|
-  t.libs = ['lib', 'test']
-  t.test_files = Dir["test/**/*_test.rb"]
-  t.verbose = true
-  t.warning = true
+  task :default => :spec
+rescue LoadError
+  # no rspec available
 end
